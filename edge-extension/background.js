@@ -355,12 +355,14 @@ async function downloadSingleDoc(doc, ctx) {
      throw new Error(result.error || "Export/download failed");
    }
 
-   // If content script returned a data URL, save via chrome.downloads (supports subdirectories)
-   if (result.dataUrl) {
+   // Content script returned an export URL; download it via chrome.downloads.
+   // chrome.downloads uses the browser's cookie jar, so auth cookies are sent.
+   // This avoids the .crdownload suffix that large data URLs cause.
+   if (result.downloadUrl) {
      console.log('[bg] saving file with subdirectory path:', safePath);
      await new Promise((resolve, reject) => {
        chrome.downloads.download({
-         url: result.dataUrl,
+         url: result.downloadUrl,
          filename: safePath,
          saveAs: false,
        }, (downloadId) => {
