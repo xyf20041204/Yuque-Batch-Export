@@ -114,7 +114,7 @@
   // ============================================================
   // 4. Batch export core
   // ============================================================
-  async function mapWithConcurrency(items, limit, worker, gapMs) {
+  async function mapWith下载并发数(items, limit, worker, gapMs) {
     var results = new Array(items.length);
     limit = Math.max(1, limit);
     var batchCount = Math.ceil(items.length / limit);
@@ -138,27 +138,57 @@
 
   function safeGMdl(url, filePath) {
     return new Promise(function(resolve) {
-      console.log('[Yuque Export] GM_download:', filePath);
+      console.log('[Yuque Export] Download:', filePath);
+      // PRIMARY: GM_download with full path.
+      // Modern TM on Chrome/Edge maps GM_download to chrome.downloads.download,
+      // which supports subdirectory paths (like "yuque-export/book/doc.md").
+      // The browser sends auth cookies on the GET — the export URL is on yuque.com.
       GM_download({
         url: url,
         name: filePath,
         saveAs: false,
         onload: function() { resolve(true); },
-        onerror: function(err) {
-          console.error('[Yuque Export] GM_download error:', err);
-          // Fallback: <a> element click on the real page
-          var a = _doc.createElement('a');
-          a.href = url;
-          a.download = filePath.split('/').pop();
-          _doc.body.appendChild(a);
-          a.click();
-          _doc.body.removeChild(a);
-          resolve(true);
+        onerror: function() {
+          console.warn('[Yuque Export] GM_download failed, trying blob download');
+          // FALLBACK: fetch as blob and <a> download
+          // (subdirectory path may be lost if browser strips slashes from download attr)
+          _fetch(url, { credentials: 'include' })
+            .then(function(resp) {
+              if (!resp.ok) throw new Error('Fetch failed: ' + resp.status);
+              return resp.blob();
+            })
+            .then(function(blob) {
+              var blobUrl = URL.createObjectURL(blob);
+              var a = _doc.createElement('a');
+              a.href = blobUrl;
+              a.download = filePath;
+              a.style.display = 'none';
+              _doc.body.appendChild(a);
+              a.click();
+              setTimeout(function() {
+                _doc.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+                resolve(true);
+              }, 500);
+            })
+            .catch(function() {
+              console.error('[Yuque Export] All download methods failed');
+              // Ultimate fallback: direct <a> click
+              var a = _doc.createElement('a');
+              a.href = url;
+              a.download = filePath;
+              a.style.display = 'none';
+              _doc.body.appendChild(a);
+              a.click();
+              setTimeout(function() {
+                _doc.body.removeChild(a);
+                resolve(true);
+              }, 500);
+            });
         }
       });
     });
   }
-
   var progressListeners = [];
   function sendProgress(data) {
     for (var i = 0; i < progressListeners.length; i++) { progressListeners[i](data); }
@@ -281,7 +311,7 @@
           bookName: currentBook.name, bookIndex: bi + 1, bookTotal: bookList.length
         };
 
-        var results = await mapWithConcurrency(docs, concurrency,
+        var results = await mapWith下载并发数(docs, concurrency,
           function(doc) { return downloadSingleDoc(doc, { currentBook: currentBook, docPathMap: docPathMap, username: username, options: options, progressCtx: progressCtx }); },
           1000);
 
@@ -290,13 +320,13 @@
 
         sendProgress({
           bookName: currentBook.name, current: docs.length, total: docs.length,
-          bookIndex: bi + 1, bookTotal: bookList.length, filename: currentBook.name + ' done',
+          bookIndex: bi + 1, bookTotal: bookList.length, filename: currentBook.name + ' 完成',
           bookDone: true, successCount: successCount
         });
       }
 
       sendProgress({
-        current: totalCount, total: totalCount, filename: 'All done',
+        current: totalCount, total: totalCount, filename: '全部完成',
         done: true, successCount: totalSuccess
       });
       return { success: true, count: totalSuccess };
@@ -369,19 +399,19 @@
   panel.innerHTML = [
     '<div id="yuque-export-icon"><img src="' + iconUrl + '" alt="logo"></div>',
     '<div id="yuque-export-header">',
-    '<div id="yuque-export-header-title"><img src="' + iconUrl + '" alt="logo"><h3>Yuque Export</h3></div>',
-    '<div><button id="ye-collapse-btn" title="Collapse">&#8722;</button></div>',
+    '<div id="yuque-export-header-title"><img src="' + iconUrl + '" alt="logo"><h3>语雀批量导出</h3></div>',
+    '<div><button id="ye-collapse-btn" title="折叠">&#8722;</button></div>',
     '</div>',
     '<div id="yuque-export-body">',
     '<div class="ye-section">',
-    '<label class="ye-label">Knowledge Bases</label>',
-    '<button id="ye-refresh-btn" class="ye-btn ye-btn-secondary" style="margin-bottom:8px;">&#128260; Refresh</button>',
-    '<label class="ye-select-all" style="display:none;"><input type="checkbox" id="ye-select-all"> Select All</label>',
-    '<div id="ye-book-list" class="ye-book-list"><div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px;">Click Refresh to load knowledge bases</div></div>',
-    '<div id="ye-selected-hint" class="ye-hint">No knowledge base selected</div>',
+    '<label class="ye-label">选择知识库</label>',
+    '<button id="ye-refresh-btn" class="ye-btn ye-btn-secondary" style="margin-bottom:8px;">&#128260; 加载知识库</button>',
+    '<label class="ye-select-all" style="display:none;"><input type="checkbox" id="ye-select-all"> 全选</label>',
+    '<div id="ye-book-list" class="ye-book-list"><div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px;">点击上方按钮加载知识库</div></div>',
+    '<div id="ye-selected-hint" class="ye-hint">未选择知识库</div>',
     '</div>',
     '<div class="ye-section">',
-    '<label class="ye-label">Export Format</label>',
+    '<label class="ye-label">导出格式</label>',
     '<div class="ye-options">',
     '<label class="ye-option"><input type="radio" name="ye-format" value="markdown" checked> Markdown</label>',
     '<label class="ye-option"><input type="radio" name="ye-format" value="lake"> Lake</label>',
@@ -390,26 +420,26 @@
     '<label class="ye-option"><input type="radio" name="ye-format" value="jpg"> JPG</label>',
     '</div></div>',
     '<div class="ye-section" id="ye-pdf-options" style="display:none;">',
-    '<label class="ye-label">PDF Options</label>',
-    '<div class="ye-options"><label class="ye-option"><input type="checkbox" id="ye-opt-toc" checked> TOC</label></div>',
+    '<label class="ye-label">PDF 选项</label>',
+    '<div class="ye-options"><label class="ye-option"><input type="checkbox" id="ye-opt-toc" checked> 导出大纲</label></div>',
     '</div>',
     '<div class="ye-section" id="ye-md-options">',
-    '<label class="ye-label">Export Options</label>',
+    '<label class="ye-label">导出选项</label>',
     '<div class="ye-options">',
-    '<label class="ye-option"><input type="checkbox" id="ye-opt-latexcode"> LaTeX</label>',
-    '<label class="ye-option"><input type="checkbox" id="ye-opt-anchor"> Anchor</label>',
-    '<label class="ye-option"><input type="checkbox" id="ye-opt-linebreak"> Linebreak</label>',
+    '<label class="ye-option"><input type="checkbox" id="ye-opt-latexcode"> LaTeX 公式</label>',
+    '<label class="ye-option"><input type="checkbox" id="ye-opt-anchor"> 锚点</label>',
+    '<label class="ye-option"><input type="checkbox" id="ye-opt-linebreak"> 换行</label>',
     '<label class="ye-option"><input type="checkbox" id="ye-opt-usemdai" checked> MDAI</label>',
     '</div></div>',
     '<div class="ye-section">',
-    '<label class="ye-label">Concurrency</label>',
+    '<label class="ye-label">下载并发数</label>',
     '<div class="ye-rate-limit"><select id="ye-rate-limit">',
     '<option value="1">1</option><option value="2" selected>2</option><option value="4">4</option><option value="8">8</option>',
     '</select></div></div>',
-    '<button id="ye-export-btn" class="ye-btn" disabled>&#128229; Start Export</button>',
+    '<button id="ye-export-btn" class="ye-btn" disabled>&#128229; 批量导出</button>',
     '<div id="ye-progress" class="ye-progress">',
     '<div class="ye-progress-track"><div id="ye-progress-fill" class="ye-progress-fill"></div></div>',
-    '<div id="ye-progress-text" class="ye-progress-text">Ready...</div>',
+    '<div id="ye-progress-text" class="ye-progress-text">准备中...</div>',
     '</div><div id="ye-status" class="ye-status"></div>',
     '</div>'
   ].join('');
@@ -511,8 +541,8 @@
       headers: { 'accept': 'application/json' }
     });
     if (!r.ok) {
-      if (r.status === 401) throw new Error('Not logged in. Please login to yuque.com.');
-      throw new Error('Failed to load knowledge bases (' + r.statusText + ')');
+      if (r.status === 401) throw new Error('未登录语雀，请先登录');
+      throw new Error('获取知识库列表失败(' + r.statusText + ')');
     }
     var d = await r.json();
     var result = [];
@@ -526,7 +556,7 @@
 
   function renderBookList(bookArray) {
     if (!bookArray || !bookArray.length) {
-      if (bookListEl) bookListEl.innerHTML = '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px;">No knowledge bases found</div>';
+      if (bookListEl) bookListEl.innerHTML = '<div style="padding:20px;text-align:center;color:#9ca3af;font-size:12px;">暂无知识库</div>';
       if (selectAllEl) selectAllEl.style.display = 'none';
       return;
     }
@@ -537,7 +567,7 @@
         return '<label class="ye-book-item" data-book-id="' + b.id + '" data-book-slug="' + b.slug + '">'
           + '<input type="checkbox" class="ye-book-checkbox" data-book-id="' + b.id + '">'
           + '<span class="ye-book-name">' + b.name + '</span>'
-          + '<span class="ye-book-count">' + b.items_count + ' docs</span>'
+          + '<span class="ye-book-count">' + b.items_count + ' 篇</span>'
           + '</label>';
       }).join('');
     }
@@ -570,13 +600,13 @@
     for (var i = 0; i < checked.length; i++) { ids.push(parseInt(checked[i].dataset.bookId)); }
     selectedBooks = books.filter(function(b) { return ids.indexOf(b.id) !== -1; });
     if (selectedBooks.length === 0) {
-      if (selectedHint) { selectedHint.textContent = 'No knowledge base selected'; selectedHint.style.color = '#9ca3af'; }
+      if (selectedHint) { selectedHint.textContent = '未选择知识库'; selectedHint.style.color = '#9ca3af'; }
       if (exportBtn) exportBtn.disabled = true;
     } else {
       var total = 0;
       for (var bi = 0; bi < selectedBooks.length; bi++) { total += selectedBooks[bi].items_count; }
       if (selectedHint) {
-        selectedHint.textContent = selectedBooks.length + ' selected (' + total + ' docs)';
+        selectedHint.textContent = '已选择 ' + selectedBooks.length + ' 个知识库 (' + total + ' 篇)';
         selectedHint.style.color = '#374151';
       }
       if (exportBtn) exportBtn.disabled = false;
@@ -586,21 +616,21 @@
   refreshBtn.addEventListener('click', async function() {
     try {
       refreshBtn.disabled = true;
-      refreshBtn.textContent = 'Loading...';
+      refreshBtn.textContent = '加载中...';
       books = await getBookStacks();
       renderBookList(books);
       refreshBtn.disabled = false;
-      refreshBtn.innerHTML = '&#128260; Refresh';
+      refreshBtn.innerHTML = '&#128260; 加载知识库';
     } catch (err) {
-      if (bookListEl) bookListEl.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:12px;">Failed: ' + err.message + '</div>';
+      if (bookListEl) bookListEl.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:12px;">加载失败: ' + err.message + '</div>';
       refreshBtn.disabled = false;
-      refreshBtn.innerHTML = '&#128260; Refresh';
+      refreshBtn.innerHTML = '&#128260; 加载知识库';
     }
   });
 
   exportBtn.addEventListener('click', async function() {
     if (selectedBooks.length === 0) {
-      showStatus('Please select knowledge base(s) first', 'error');
+      showStatus('请先选择知识库', 'error');
       return;
     }
     var format = _doc.querySelector('input[name="ye-format"]:checked').value;
@@ -617,16 +647,16 @@
     exportBtn.disabled = true;
     refreshBtn.disabled = true;
     if (progressBar) progressBar.classList.add('active');
-    if (progressText) progressText.textContent = 'Exporting...';
-    showStatus('Export in progress...', 'info');
+    if (progressText) progressText.textContent = '正在导出...';
+    showStatus('下载任务已启动', 'info');
 
     handleBatchExport(selectedBooks, options).then(function(result) {
       exportBtn.disabled = false;
       refreshBtn.disabled = false;
       if (result.success) {
-        showStatus('Export complete! ' + result.count + ' files downloaded', 'success');
+        showStatus('批量导出完成！已下载 ' + result.count + ' 个文件', 'success');
       } else {
-        showStatus('Export failed: ' + (result.error || 'Unknown error'), 'error');
+        showStatus('批量导出失败: ' + (result.error || '未知错误'), 'error');
       }
       setTimeout(function() {
         if (progressBar) progressBar.classList.remove('active');
@@ -640,9 +670,9 @@
       exportBtn.disabled = false;
       refreshBtn.disabled = false;
       if (msg.error) {
-        showStatus('Error: ' + msg.error, 'error');
+        showStatus('错误: ' + msg.error, 'error');
       } else if (msg.successCount !== undefined) {
-        showStatus('Export complete! ' + msg.successCount + ' files downloaded', 'success');
+        showStatus('批量导出完成！已下载 ' + msg.successCount + ' 个文件', 'success');
       }
       setTimeout(function() {
         if (progressBar) progressBar.classList.remove('active');
@@ -651,7 +681,7 @@
     } else {
       if (progressFill) progressFill.style.width = ((msg.current / msg.total) * 100) + '%';
       var prefix = msg.bookTotal > 1 ? '[' + msg.bookIndex + '/' + msg.bookTotal + ' ' + (msg.bookName || '') + '] ' : '';
-      if (progressText) progressText.textContent = prefix + msg.current + '/' + msg.total + ' - ' + (msg.filename || 'Processing...');
+      if (progressText) progressText.textContent = prefix + msg.current + '/' + msg.total + ' - ' + (msg.filename || '处理中...');
     }
   });
 

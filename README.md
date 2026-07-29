@@ -1,4 +1,4 @@
-﻿# Yuque Batch Export / 语雀批量导出助手
+# Yuque Batch Export / 语雀批量导出助手
 
 > 在浏览器一键批量导出自己知识库的全部文档，自动保留目录结构。支持 Markdown / PDF / Word / JPG 格式。
 
@@ -119,10 +119,12 @@ yuque-export-extension/
 
 ## 已知限制
 
-- **Edge 兼容**：`chrome.cookies` API 在 Edge 上可能返回空结果，此时回退到 `document.cookie`。导出功能不受影响（content script 的 `fetch()` 自动携带全部 Cookie），但知识库列表查询可能缺少部分鉴权信息。
+- **篡改猴脚本无法保留子目录结构**：Tampermonkey 的 GM_download API 在 Chrome/Edge 上对 
+ame 参数中的 / 路径符处理不一致，部分版本会将其替换为下划线或直接忽略，导致所有文件平铺在浏览器下载根目录，无法按 yuque-export/知识库/子目录/ 结构归类。这是 Tampermonkey 运行环境的限制，非脚本逻辑缺陷，已记录在 [Issue #1](https://github.com/xyf20041204/Yuque-Batch-Export/issues/1)。如果需要完整的子目录支持，请使用 Edge/Chrome 扩展版本。
+- **Edge chrome.cookies 返回空**：Edge 浏览器中 chrome.cookies API 在 Service Worker 内可能返回空结果，脚本已做回退处理（改用 document.cookie），导出功能不受影响，但知识库列表查询偶尔可能因鉴权信息不完整而少列。
+- **.crdownload 临时后缀**：部分文件下载完成后仍保留 .md.crdownload 后缀（浏览器下载管理器层面的行为，扩展无法干预）。文件内容完整，可用项目提供的 cleanup_crdownload.py 脚本批量重命名。
 - **大文件**：单个文档超过 ~50 MB 时建议将并发数设为 1 以确保下载稳定。
 - **导出速率**：建议并发数 ≤ 3，避免触发语雀服务端限流。
-
 
 ## 下载后清理 .crdownload 后缀
 
@@ -141,20 +143,3 @@ python cleanup_crdownload.py
 脚本会递归遍历目录，把所有 xxx.md.crdownload 重命名为 xxx.md。如果目标文件已存在会自动跳过，不会覆盖。
 
 **为什么不在插件里直接处理？** .crdownload 是浏览器下载管理器层面的行为，浏览器扩展没有文件系统写入权限，无法重命名已下载的文件。独立 Python 脚本是处理这个问题的正确方式。
-
-## 开发
-
-纯原生 JavaScript，Manifest V3。无构建工具、无外部依赖。
-
-```bash
-# 加载 edge-extension/ 文件夹即可开发调试
-
-# 调试入口：
-# · edge://extensions/ → 点击 "Service Worker" → background.js 日志
-# · 语雀页面 F12 控制台 → [cs] 前缀 = content script 日志
-# · 语雀页面 F12 控制台 → [bg] 前缀 = 后台日志（通过 sendProgress 广播）
-```
-
-## License
-
-MIT
