@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "语雀知识库批量导出",
+  "name": "Yuque Batch Export",
   "version": "2.1.0",
-  "description": "一款用于批量导出语雀知识库文档的浏览器扩展，无需任何手动配置。",
+  "description": "一键批量导出语雀知识库文档，支持 Markdown / PDF / Word / JPG 格式，保留目录结构。",
   "permissions": [
     "activeTab",
     "tabs",
