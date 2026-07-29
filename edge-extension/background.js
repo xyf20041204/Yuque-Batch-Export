@@ -355,25 +355,11 @@ async function downloadSingleDoc(doc, ctx) {
      throw new Error(result.error || "Export/download failed");
    }
 
-   // Content script returned an export URL; download it via chrome.downloads.
-   // chrome.downloads uses the browser's cookie jar, so auth cookies are sent.
-   // This avoids the .crdownload suffix that large data URLs cause.
-   if (result.downloadUrl) {
-     console.log('[bg] saving file with subdirectory path:', safePath);
-     await new Promise((resolve, reject) => {
-       chrome.downloads.download({
-         url: result.downloadUrl,
-         filename: safePath,
-         saveAs: false,
-       }, (downloadId) => {
-         if (chrome.runtime.lastError) {
-           reject(new Error(chrome.runtime.lastError.message));
-         } else {
-           console.log('[bg] download OK, id:', downloadId, 'path:', safePath);
-           resolve(downloadId);
-         }
-       });
-     });
+   // Content script handles download directly (fetches blob in page context,
+   // creates blob URL, calls chrome.downloads.download). This avoids .crdownload
+   // suffix and cross-context cookie issues.
+   if (result.success) {
+     console.log('[bg] download completed for:', safePath);
    }
 
    progress.finished++;

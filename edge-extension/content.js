@@ -77,5 +77,41 @@ async function handleExportAndDownload(req) {
   // 2. Return the export URL directly. background.js will use chrome.downloads to
   //    fetch it natively ? this avoids the .crdownload suffix caused by data URLs.
   console.log('[cs] exportAndDownload DONE, downloadUrl:', exportUrl);
-  return { success: true, downloadUrl: exportUrl, filename: filePath };
+    // 2. Fetch the exported file (page context fetch = auto cookies, no cookie header needed)
+  console.log('[cs] fetching exported file...');
+  const fileResp = await fetch(exportUrl);
+  if (!fileResp.ok) {
+    throw new Error('File download failed: HTTP ' + fileResp.status);
+  }
+
+  const blob = await fileResp.blob();
+  console.log('[cs] file blob size:', blob.size, 'type:', blob.type);
+
+  if (blob.size === 0) {
+    throw new Error('Downloaded file is empty (0 bytes)');
+  }
+
+  // 3. Download directly from content script using chrome.downloads API.
+  //    Called from page context, so blob URLs work reliably.
+  //    Avoids .crdownload suffix AND cross-context cookie issues.
+  const blobUrl = URL.createObjectURL(blob);
+  const downloadId = await new Promise((resolve, reject) => {
+    chrome.downloads.download({
+      url: blobUrl,
+      filename: filePath,
+      saveAs: false,
+    }, (id) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(id);
+      }
+    });
+  });
+
+  // Release the blob URL after a minute (download should have started by then)
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+
+  console.log('[cs] download OK, id:', downloadId, 'path:', filePath);
+  return { success: true };
 }
