@@ -310,7 +310,7 @@ async function downloadSingleDoc(doc, ctx) {
     const format = options.format || "markdown";
     const fileExt = (format === "lake") ? ".lake" : (format === "markdown") ? ".md" : "." + format;
 
-    let filePath = sanitizeFilename(currentBook.name);
+    let filePath = "yuque-export/" + sanitizeFilename(currentBook.name);
     if (tocInfo?.path) {
       filePath += "/" + tocInfo.path;
     }
