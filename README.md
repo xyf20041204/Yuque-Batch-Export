@@ -123,6 +123,25 @@ yuque-export-extension/
 - **大文件**：单个文档超过 ~50 MB 时建议将并发数设为 1 以确保下载稳定。
 - **导出速率**：建议并发数 ≤ 3，避免触发语雀服务端限流。
 
+
+## 下载后清理 .crdownload 后缀
+
+由于语雀导出的下载链接需要 HttpOnly Cookie 鉴权，而 chrome.downloads API 在 Service Worker 中无法携带这些 Cookie，部分文件下载后会保留 .crdownload 临时后缀。文件内容本身是完整的，只需去掉这个后缀即可正常使用。
+
+项目提供了 cleanup_crdownload.py 脚本一键处理：
+
+```bash
+# 清理指定目录下所有 .crdownload 文件
+python cleanup_crdownload.py D:\你的下载目录
+
+# 不指定目录则扫描当前目录
+python cleanup_crdownload.py
+```
+
+脚本会递归遍历目录，把所有 xxx.md.crdownload 重命名为 xxx.md。如果目标文件已存在会自动跳过，不会覆盖。
+
+**为什么不在插件里直接处理？** .crdownload 是浏览器下载管理器层面的行为，浏览器扩展没有文件系统写入权限，无法重命名已下载的文件。独立 Python 脚本是处理这个问题的正确方式。
+
 ## 开发
 
 纯原生 JavaScript，Manifest V3。无构建工具、无外部依赖。
